@@ -1,0 +1,2 @@
+1. should check for duplicate header.
+2. should not simply forward requests for any client on the Internet who happens to find the web proxy' address.
