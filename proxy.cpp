@@ -17,7 +17,6 @@
 void *forwarder(void* args);
 void *webTalk(void* args);
 void secureTalk(int clientfd, rio_t client, char *inHost, int serverPort);
-void ignore();
 
 int proxyPort;
 pthread_mutex_t mutex;
@@ -49,9 +48,7 @@ int main(int argc, char *argv[])
   }
   
   serverPort = 80;
-
-  Signal(SIGPIPE, (handler_t*) ignore);
-  
+  signal(SIGPIPE,SIG_IGN);
   proxyPort = atoi(argv[1]);
 
   /* start listening on proxy port */
@@ -320,10 +317,4 @@ void *forwarder(void* args)
 	memset(buf1,0,strlen(buf1));
   }
   return NULL;
-}
-
-
-void ignore()
-{
-	;
 }
