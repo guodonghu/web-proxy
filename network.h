@@ -62,5 +62,11 @@ ssize_t	rio_readlineb(rio_t *rp, void *usrbuf, ssize_t maxlen);
 int open_clientfd(char *hostname, int portno);
 int open_listenfd(int portno);
 
-#endif /* __CSAPP_H__ */
-/* $end csapp.h */
+//network connection functions
+void *forwarder(void* args);
+void *httpConnection(void* args);
+void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort);
+
+
+
+#endif

@@ -4,19 +4,9 @@
 #include <vector>
 #include <string>
 #include <iostream>
+#include <unordered_map>
 
-#define   FILTER_FILE   "proxy.filter"
-#define   LOG_FILE      "proxy.log"
-#define   DEBUG_FILE	"proxy.debug"
-
-
-/*============================================================
- * function declarations
- *============================================================*/
-		       
-void *forwarder(void* args);
-void *webTalk(void* args);
-void secureTalk(int clientfd, rio_t client, char *inHost, int serverPort);
+using namespace std;
 
 int proxyPort;
 pthread_mutex_t mutex;
@@ -24,16 +14,10 @@ pthread_mutex_t mutex;
 typedef struct {
 	char buf[MAXLINE];
 	size_t length;
-}piece_t;
+} piece;
 
-typedef struct {
-	std::string request;
-	std::vector<piece_t> response;
-}cache_t;
+unordered_map<string, vector<piece> > cache;
 
-std::vector<cache_t> cache;
-
-/* main function for the proxy program */
 
 int main(int argc, char *argv[])
 {
@@ -74,7 +58,7 @@ int main(int argc, char *argv[])
     int* fdp = (int*)malloc(2*sizeof(int));
     fdp[0] = connfd;
     fdp[1] = serverPort;
-    pthread_create(&tid, NULL, webTalk, fdp);
+    pthread_create(&tid, NULL, httpConnection, fdp);
     pthread_detach(tid);
 
   }
@@ -115,7 +99,7 @@ void parseAddress(char* url, char* host, char** file, int* serverPort)
 	*serverPort = atoi(strtok_r(NULL, "/",&saveptr));
 }
 
-void *webTalk(void* args)
+void *httpConnection(void* args)
 {
   int serverfd, clientfd, serverPort;
   char buf1[MAXLINE], buf2[MAXLINE], buf3[MAXLINE];
@@ -123,36 +107,24 @@ void *webTalk(void* args)
   char url[MAXLINE];
   char *cmd, *file;
   std::string send;
-  std::vector<piece_t> receive;
-  cache_t acache;
+  std::vector<piece> receive;
   rio_t server, client;
-  char slash[10];
-  strcpy(slash, "/");
   
   clientfd = ((int*)args)[0];
   serverPort = ((int*)args)[1];
   free(args);
-  
   memset(buf1, 0, MAXLINE);
   memset(buf2, 0, MAXLINE);
   memset(buf3, 0, MAXLINE);
   memset(url, 0, MAXLINE);
   rio_readinitb(&client, clientfd);
-
-  /*
-   * Determine protocol (CONNECT or GET)
-   */
   rio_readlineb(&client, buf1, MAXLINE);
   char header[MAXLINE];
   strcpy(header, buf1);
-  //split cmd and url from the header
-  //cmd = strtok_r(buf1, " ", &saveptr);
-  //strcpy(url,strtok_r(NULL, " ", &saveptr));
-  //printf("%s\n", cmd);
   sscanf(buf1, "%s %s %s", buf2, url, buf3);
   cmd = buf2;
   parseAddress(url, host, &file, &serverPort);
-  //printf("%s\n%d\n",host, serverPort);
+  // identify method
   if (strcmp(cmd, "GET") == 0) {
 
 	  send = send + header;
@@ -184,23 +156,21 @@ void *webTalk(void* args)
 	  }
 
 	  bool responsed = false;
-	  for (int i = 0; i < (int)cache.size(); i++) {
-		  if (cache[i].request.compare(send) == 0) {
-			  //printf("In cache!\n");
-			  for (int j = 0; j < (int)cache[i].response.size(); j++) {
-				  if (cache[i].response[j].buf != NULL) {
-					  rio_writen(clientfd, cache[i].response[j].buf, cache[i].response[j].length);
+    if (cache.find(send) != cache.end()) {
+      printf("In cache!\n");
+      for (auto i : cache[send]) {
+				  if (i.buf != NULL) {
+					  rio_writen(clientfd, i.buf, i.length);
 					  responsed = true;
 				  }
-			  }
-			  if (responsed == true) {
-				  //printf("Cache responsed!\n");
-			  }
-			  //printf("Out cache!\n");
-			  close(clientfd);
-			  return NULL;
-		  }
-	  }
+      }
+      if (responsed == true) {
+        printf("Cache responsed!\n");
+      }
+      //printf("Out cache!\n");
+      close(clientfd);
+      return NULL;
+    }
 
 	  int time = 5;
 	  while (time) {
@@ -214,6 +184,7 @@ void *webTalk(void* args)
 		  return NULL;
 	  }
 	  if (send.size() != 0) {
+      cout << "new request" << endl;
 		  rio_writen(serverfd, send.c_str(), send.size());
 	  }
 	  //printf("finish send\n");
@@ -221,7 +192,7 @@ void *webTalk(void* args)
 	  // GET: now receive the response
 	  rio_readinitb(&server, serverfd);
 	  while(1) {
-		  piece_t temp;
+		  piece temp;
 		  length = rio_readn(serverfd, temp.buf, MAXLINE);
 		  if (length > 0) {
 			  temp.length = length;
@@ -241,14 +212,12 @@ void *webTalk(void* args)
 		  }
 	  }
 	  //printf("finish receive\n");
-	  acache.request = send;
-	  acache.response = receive;
-	  cache.push_back(acache);
+	  cache[send] = receive;
 	  close(serverfd);
   }
   // CONNECT: call a different function, securetalk, for HTTPS
   if (strcmp(cmd, "CONNECT") == 0) {
-	  secureTalk(clientfd, client, host, serverPort);
+	  httpsConnection(clientfd, client, host, serverPort);
   }
 
   close(clientfd);
@@ -259,7 +228,7 @@ void *webTalk(void* args)
 /* this function handles the two-way encrypted data transferred in
    an HTTPS connection */
 
-void secureTalk(int clientfd, rio_t client, char *inHost, int serverPort)
+void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort)
 {
   int serverfd;
   if (serverPort == proxyPort)
