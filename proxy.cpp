@@ -111,7 +111,7 @@ void *httpConnection(void* args) {
   cmd = buf2;
   parseAddress(url, host, &file, &serverPort);
   // identify method
-  if (strcmp(cmd, "GET") == 0) {
+  if (strcmp(cmd, "GET") == 0 || strcmp(cmd, "POST") == 0) {
 	  send = send + header;
 	  int length;
 	  while(1) {
@@ -129,14 +129,14 @@ void *httpConnection(void* args) {
 		  }
 		  else
 			  break;
-      if (strcmp(buf2, "\r\n") == 0) {
+      if (strcmp(buf2, "\r\n") == 0 || strcmp(cmd, "GET") == 0) {
         send = send + buf2;
-        //rio_writen(serverfd, "\r\n", strlen("\r\n"));
         break;
       }
 		  memset(buf2,0,strlen(buf2));
 	  }
-
+   
+    
 	  bool responsed = false;
     if (cache.find(send) != cache.end()) {
       printf("In cache!\n");
