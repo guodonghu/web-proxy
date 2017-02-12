@@ -62,6 +62,7 @@ int main(int argc, char *argv[])
 
   }
   pthread_mutex_destroy(&mutex);
+  close(listenfd);
   return 0;
 }
 
@@ -185,12 +186,6 @@ void *httpConnection(void* args) {
       }
 		  memset(buf3,0,BUFFER_SIZE);
 	  }
-    
-	  /*for (int j = 0; j < (int)receive.size(); j++) {
-		  if (receive[j].buf != NULL) {
-			  rio_writen(clientfd, receive[j].buf, receive[j].length);
-		  }
-      }*/
 	  cache[request] = receive;
 	  close(serverfd);
   }
