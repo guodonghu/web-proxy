@@ -1,2 +1,4 @@
-1. should check for duplicate header.
-2. should not simply forward requests for any client on the Internet who happens to find the web proxy' address.
+1. SHOULD check for duplicate header.
+2. SHOULD not simply forward requests for any client on the Internet who happens to find the web proxy' address.
+3. MUST consider race condition when write to cache
+4. MUST send request upon receiving. MUST NOT try to store the whole request and then send to server(for post the request could be giga bytes long!)
