@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
   signal(SIGPIPE,SIG_IGN);
   proxyPort = atoi(argv[1]);
 
-  /* start listening on proxy port */
+  // start listening on proxy port
 
   listenfd = open_listenfd(proxyPort);
 
@@ -47,13 +47,13 @@ int main(int argc, char *argv[])
 
     clientlen = sizeof(clientaddr);
 
-    /* accept a new connection from a client here */
+    // accept a new connection from a client here
     connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
     if (connfd < 0) {
     	continue;
     }
     pthread_t tid;
-    /* create a new thread to process the new connection */
+    // create a new thread to process the new connection 
     int* fdp = (int*)malloc(2*sizeof(int));
     fdp[0] = connfd;
     fdp[1] = serverPort;
@@ -65,49 +65,36 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-void parseAddress(char* url, char* host, char** file, int* serverPort)
-{
+void parseAddress(char* url, char* host, char** file, int* serverPort) {
 	char *point1;
   char *saveptr;
 
-	if(strstr(url, "http://"))
+	if(strstr(url, "http://")) {
 		url = &(url[7]);
+  }
 	*file = strchr(url, '/');
-	
 	strcpy(host, url);
-
-	/* first time strtok_r is called, returns pointer to host */
-	/* strtok_r (and strtok) destroy the string that is tokenized */
-
-	/* get rid of everything after the first / */
-
+	//get pointer to host
 	strtok_r(host, "/", &saveptr);
-
-	/* now look to see if we have a colon */
 
 	point1 = strchr(host, ':');
 	if(!point1) {
 		*serverPort = 80;
 		return;
-	}
-	
-	/* we do have a colon, so get the host part out */
+	}	
 	strtok_r(host, ":", &saveptr);
-
-	/* now get the part after the : */
 	*serverPort = atoi(strtok_r(NULL, "/",&saveptr));
 }
 
-void *httpConnection(void* args)
-{
-  int serverfd, clientfd, serverPort;
-  char buf1[BUFFER_SIZE], buf2[BUFFER_SIZE], buf3[BUFFER_SIZE];
-  char host[BUFFER_SIZE];
-  char url[BUFFER_SIZE];
+void *httpConnection(void* args) {
   char *cmd, *file;
   std::string send;
   std::vector<piece> receive;
   rio_t server, client;
+  int serverfd, clientfd, serverPort;
+  char buf1[BUFFER_SIZE], buf2[BUFFER_SIZE], buf3[BUFFER_SIZE];
+  char host[BUFFER_SIZE];
+  char url[BUFFER_SIZE];
   
   clientfd = ((int*)args)[0];
   serverPort = ((int*)args)[1];
@@ -125,7 +112,6 @@ void *httpConnection(void* args)
   parseAddress(url, host, &file, &serverPort);
   // identify method
   if (strcmp(cmd, "GET") == 0) {
-
 	  send = send + header;
 	  int length;
 	  while(1) {
@@ -137,20 +123,17 @@ void *httpConnection(void* args)
 				  //rio_writen(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
 				  //printf("Connection: close\r\n");
 			  }
-			  else if (buf2[0] == 'c' && buf2[1] == 'o') {
-				  continue;
-			  }
 			  else {
 				  send = send + buf2;
 			  }
 		  }
 		  else
 			  break;
-		  if (strcmp(buf2, "\r\n") == 0) {
-			  send = send + buf2;
-			  //rio_writen(serverfd, "\r\n", strlen("\r\n"));
-			  break;
-		  }
+      if (strcmp(buf2, "\r\n") == 0) {
+        send = send + buf2;
+        //rio_writen(serverfd, "\r\n", strlen("\r\n"));
+        break;
+      }
 		  memset(buf2,0,strlen(buf2));
 	  }
 
