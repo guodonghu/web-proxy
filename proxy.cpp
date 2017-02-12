@@ -12,11 +12,10 @@ int proxyPort;
 pthread_mutex_t mutex;
 
 typedef struct {
-	char buf[MAXLINE];
+	char buf[BUFFER_SIZE];
 	size_t length;
 } piece;
 
-//key: request line value: reponse in pieces
 unordered_map<string, vector<piece> > cache;
 
 
@@ -45,7 +44,7 @@ int main(int argc, char *argv[])
   pthread_mutex_init(&mutex, NULL);
 
   while(1) {
-    
+
     clientlen = sizeof(clientaddr);
 
     /* accept a new connection from a client here */
@@ -102,9 +101,9 @@ void parseAddress(char* url, char* host, char** file, int* serverPort)
 void *httpConnection(void* args)
 {
   int serverfd, clientfd, serverPort;
-  char buf1[MAXLINE], buf2[MAXLINE], buf3[MAXLINE];
-  char host[MAXLINE];
-  char url[MAXLINE];
+  char buf1[BUFFER_SIZE], buf2[BUFFER_SIZE], buf3[BUFFER_SIZE];
+  char host[BUFFER_SIZE];
+  char url[BUFFER_SIZE];
   char *cmd, *file;
   std::string send;
   std::vector<piece> receive;
@@ -113,24 +112,24 @@ void *httpConnection(void* args)
   clientfd = ((int*)args)[0];
   serverPort = ((int*)args)[1];
   free(args);
-  memset(buf1, 0, MAXLINE);
-  memset(buf2, 0, MAXLINE);
-  memset(buf3, 0, MAXLINE);
-  memset(url, 0, MAXLINE);
+  memset(buf1, 0, BUFFER_SIZE);
+  memset(buf2, 0, BUFFER_SIZE);
+  memset(buf3, 0, BUFFER_SIZE);
+  memset(url, 0, BUFFER_SIZE);
   rio_readinitb(&client, clientfd);
-  rio_readlineb(&client, buf1, MAXLINE);
-  char header[MAXLINE];
+  rio_readlineb(&client, buf1, BUFFER_SIZE);
+  char header[BUFFER_SIZE];
   strcpy(header, buf1);
   sscanf(buf1, "%s %s %s", buf2, url, buf3);
   cmd = buf2;
   parseAddress(url, host, &file, &serverPort);
   // identify method
-  if (strcmp(cmd, "GET") == 0 || strcmp(cmd, "POST") == 0) {
+  if (strcmp(cmd, "GET") == 0) {
 
 	  send = send + header;
 	  int length;
 	  while(1) {
-		  length = rio_readlineb(&client, buf2, MAXLINE);
+		  length = rio_readlineb(&client, buf2, BUFFER_SIZE);
 		  if (length > 0) {
 			  if (strcmp(buf2, "Connection: keep-alive\r\n") == 0) {
 				  //printf("%s\n", buf2);
@@ -147,7 +146,11 @@ void *httpConnection(void* args)
 		  }
 		  else
 			  break;
-		  
+		  if (strcmp(buf2, "\r\n") == 0) {
+			  send = send + buf2;
+			  //rio_writen(serverfd, "\r\n", strlen("\r\n"));
+			  break;
+		  }
 		  memset(buf2,0,strlen(buf2));
 	  }
 
@@ -180,7 +183,6 @@ void *httpConnection(void* args)
 		  return NULL;
 	  }
 	  if (send.size() != 0) {
-      cout << "new request" << endl;
 		  rio_writen(serverfd, send.c_str(), send.size());
 	  }
 	  //printf("finish send\n");
@@ -189,7 +191,7 @@ void *httpConnection(void* args)
 	  rio_readinitb(&server, serverfd);
 	  while(1) {
 		  piece temp;
-		  length = rio_readn(serverfd, temp.buf, MAXLINE);
+		  length = rio_readn(serverfd, temp.buf, BUFFER_SIZE);
 		  if (length > 0) {
 			  temp.length = length;
 			  receive.push_back(temp);
@@ -198,7 +200,7 @@ void *httpConnection(void* args)
 		//	  break;
 		  //}
 		  else break;
-		  memset(buf3,0,MAXLINE);
+		  memset(buf3,0,BUFFER_SIZE);
 	  }
 	  //printf("%s\n", receive);
 	  for (int j = 0; j < (int)receive.size(); j++) {
@@ -264,7 +266,7 @@ void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort)
 void *forwarder(void* args)
 {
   int serverfd, clientfd;
-  char buf1[MAXLINE];
+  char buf1[BUFFER_SIZE];
   clientfd = ((int*)args)[0];
   serverfd = ((int*)args)[1];
   free(args);
@@ -274,7 +276,7 @@ void *forwarder(void* args)
     
     /* serverfd is for talking to the web server */
     /* clientfd is for talking to the browser */
-	if ((length = rio_readp(serverfd, buf1, MAXLINE)) > 0) {
+	if ((length = rio_readp(serverfd, buf1, BUFFER_SIZE)) > 0) {
 		rio_writep(clientfd, buf1, length);
 	}
 	else
