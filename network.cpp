@@ -50,7 +50,7 @@ ssize_t rio_read(rio_t *rp, char *usrbuf, ssize_t n) {
     while (rp->rio_cnt <= 0) {  //refill buffer 
       rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, sizeof(rp->rio_buf));
       if (rp->rio_cnt < 0) {
-        if (errno != EINTR) {/* interrupted by sig handler return */
+        if (errno != EINTR) {  // interrupted by sig handler return 
           return -1;
         }
       }
@@ -58,7 +58,7 @@ ssize_t rio_read(rio_t *rp, char *usrbuf, ssize_t n) {
         return 0;
       }
       else { 
-        rp->rio_bufptr = rp->rio_buf; /* reset buffer ptr */
+        rp->rio_bufptr = rp->rio_buf; // reset buffer ptr 
       }
     }
     cnt = n;          
@@ -98,10 +98,9 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, ssize_t maxlen) {
       return -1;
     }
   }
-  *bufp = 0;
+  //*bufp = 0;
   return n;
 }
-/* $end rio_readlineb */
 
 ssize_t rio_readp(int fd, void *ptr, ssize_t nbytes) {
   int n;

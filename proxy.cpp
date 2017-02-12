@@ -65,6 +65,9 @@ int main(int argc, char *argv[])
   return 0;
 }
 
+
+
+
 void parseAddress(char* url, char* host, char** file, int* serverPort) {
 	char *point1;
   char *saveptr;
@@ -88,7 +91,7 @@ void parseAddress(char* url, char* host, char** file, int* serverPort) {
 
 void *httpConnection(void* args) {
   char *cmd, *file;
-  std::string send;
+  std::string request;
   std::vector<piece> receive;
   rio_t server, client;
   int serverfd, clientfd, serverPort;
@@ -112,65 +115,65 @@ void *httpConnection(void* args) {
   parseAddress(url, host, &file, &serverPort);
   // identify method
   if (strcmp(cmd, "GET") == 0 || strcmp(cmd, "POST") == 0) {
-	  send = send + header;
+	  request = request + header;
+    bool hasContent = false;
 	  int length;
 	  while(1) {
 		  length = rio_readlineb(&client, buf2, BUFFER_SIZE);
 		  if (length > 0) {
 			  if (strcmp(buf2, "Connection: keep-alive\r\n") == 0) {
 				  //printf("%s\n", buf2);
-				  send = send + "Connection: close\r\n";
+				  request = request + "Connection: close\r\n";
 				  //rio_writen(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
 				  //printf("Connection: close\r\n");
 			  }
 			  else {
-				  send = send + buf2;
+          if (strstr(buf2, "Content-Length") != NULL) {
+            hasContent = true;
+          }
+				  request = request + buf2;
 			  }
 		  }
 		  else
 			  break;
-      if (strcmp(buf2, "\r\n") == 0 || strcmp(cmd, "GET") == 0) {
-        send = send + buf2;
+      if (strcmp(buf2, "\r\n") == 0 && !hasContent) {
+        request = request + buf2;
         break;
       }
 		  memset(buf2,0,strlen(buf2));
 	  }
-   
     
 	  bool responsed = false;
-    if (cache.find(send) != cache.end()) {
-      printf("In cache!\n");
-      for (auto i : cache[send]) {
-				  if (i.buf != NULL) {
-					  rio_writen(clientfd, i.buf, i.length);
-					  responsed = true;
-				  }
+    if (cache.find(request) != cache.end()) {
+      for (auto i : cache[request]) {
+        if (i.buf != NULL) {
+          rio_writen(clientfd, i.buf, i.length);
+          responsed = true;
+        }
       }
       if (responsed == true) {
         printf("Cache responsed!\n");
       }
-      //printf("Out cache!\n");
       close(clientfd);
       return NULL;
     }
 
-	  int time = 5;
-	  while (time) {
-		  if ((serverfd = open_clientfd(host, serverPort)) > 0)
+	  int tries = 10;
+	  while (tries) {
+		  if ((serverfd = open_clientfd(host, serverPort)) > 0) {
 			  break;
-		  time--;
+      }
+		  tries--;
 	  }
 	  if (serverfd <= 0) {
 		  //printf("failed to establish connection.\n");
 		  close(clientfd);
 		  return NULL;
 	  }
-	  if (send.size() != 0) {
-		  rio_writen(serverfd, send.c_str(), send.size());
+	  if (request.size() != 0) {
+		  rio_writen(serverfd, request.c_str(), request.size());
 	  }
-	  //printf("finish send\n");
-
-	  // GET: now receive the response
+	  //receive the response
 	  rio_readinitb(&server, serverfd);
 	  while(1) {
 		  piece temp;
@@ -179,92 +182,78 @@ void *httpConnection(void* args) {
 			  temp.length = length;
 			  receive.push_back(temp);
 		  }
-		  //if (strcmp(buf3, "\n") == 0) {
-		//	  break;
-		  //}
-		  else break;
+		  else{
+        break;
+      }
 		  memset(buf3,0,BUFFER_SIZE);
 	  }
-	  //printf("%s\n", receive);
+    
 	  for (int j = 0; j < (int)receive.size(); j++) {
-		  //printf("%s",receive[j]);
 		  if (receive[j].buf != NULL) {
 			  rio_writen(clientfd, receive[j].buf, receive[j].length);
 		  }
 	  }
-	  //printf("finish receive\n");
-	  cache[send] = receive;
+	  cache[request] = receive;
 	  close(serverfd);
   }
   // CONNECT: call a different function, securetalk, for HTTPS
   if (strcmp(cmd, "CONNECT") == 0) {
 	  httpsConnection(clientfd, client, host, serverPort);
   }
-
+  
   close(clientfd);
   return NULL;
-
 }
 
-/* this function handles the two-way encrypted data transferred in
-   an HTTPS connection */
-
-void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort)
-{
+void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort) {
   int serverfd;
   if (serverPort == proxyPort)
     serverPort = 443;
-  
-  /* Open connecton to webserver */
-  /* clientfd is browser */
-  /* serverfd is server */
+  //client:browser, server: real web server
   while (1) {
-  		if ((serverfd = open_clientfd(inHost, serverPort)) > 0)
-  			break;
+    if ((serverfd = open_clientfd(inHost, serverPort)) > 0) {
+      break;
+    }
   }
-
-  /* let the client know we've connected to the server */
+  //let the client know we've connected to the server 
   rio_writen(clientfd, "HTTP/1.1 200 Connection established\r\n\r\n", strlen("HTTP/1.1 200 Connection established\r\n\r\n"));
-
-  /* spawn a thread to pass bytes from origin server through to client */
+  
+  // spawn a thread to pass bytes from origin server to client 
   pthread_t thds[2];
   int * fd1 = (int *)malloc(2*sizeof(int));
   fd1[0] = clientfd;
   fd1[1] = serverfd;
   pthread_create(&thds[0], NULL, forwarder, fd1);
 
-  /* now pass bytes from client to server */
+  // now pass bytes from client to server 
   int * fd2 = (int *)malloc(2*sizeof(int));
   fd2[0] = serverfd;
   fd2[1] = clientfd;
   pthread_create(&thds[1], NULL, forwarder, fd2);
+  //wait two thread to finish, prevent serverfd from being closed too early
   for (int i = 0; i < 2; i++) {
     pthread_join(thds[i], NULL);
   }
   close(serverfd);
 }
 
-/* this function is for passing bytes from origin server to client */
-
-void *forwarder(void* args)
-{
+void *forwarder(void* args) {
   int serverfd, clientfd;
   char buf1[BUFFER_SIZE];
   clientfd = ((int*)args)[0];
   serverfd = ((int*)args)[1];
   free(args);
-
-  int length;
+  
+  ssize_t length = 0;
   while(1) {
-    
-    /* serverfd is for talking to the web server */
-    /* clientfd is for talking to the browser */
-	if ((length = rio_readp(serverfd, buf1, BUFFER_SIZE)) > 0) {
-		rio_writep(clientfd, buf1, length);
-	}
-	else
-		break;
-	memset(buf1,0,strlen(buf1));
+    if ((length = rio_readp(serverfd, buf1, BUFFER_SIZE)) > 0) {
+      rio_writep(clientfd, buf1, length);
+    }
+    else {
+      break;
+    }
+    memset(buf1,0,strlen(buf1));
   }
   return NULL;
 }
+
