@@ -4,3 +4,4 @@
 4. MUST send request upon receiving. MUST NOT try to store the whole request and then send to server(for post the request could be giga bytes long!)
 5. SHOULD have a timeout feature to terminate current thread if it is not finished in seconds
 6. MUST follow HTTP cache rules
+7. CONTENT LENGTH MUST match with length of actual content
