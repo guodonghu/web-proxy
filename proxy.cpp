@@ -122,10 +122,7 @@ void *httpConnection(void* args) {
 		  length = rio_readlineb(&client, buf2, BUFFER_SIZE);
 		  if (length > 0) {
 			  if (strcmp(buf2, "Connection: keep-alive\r\n") == 0) {
-				  //printf("%s\n", buf2);
 				  request = request + "Connection: close\r\n";
-				  //rio_writen(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
-				  //printf("Connection: close\r\n");
 			  }
 			  else {
           if (strstr(buf2, "Content-Length") != NULL) {
@@ -181,6 +178,7 @@ void *httpConnection(void* args) {
 		  if (length > 0) {
 			  temp.length = length;
 			  receive.push_back(temp);
+        rio_writen(clientfd, temp.buf, temp.length);
 		  }
 		  else{
         break;
@@ -188,11 +186,11 @@ void *httpConnection(void* args) {
 		  memset(buf3,0,BUFFER_SIZE);
 	  }
     
-	  for (int j = 0; j < (int)receive.size(); j++) {
+	  /*for (int j = 0; j < (int)receive.size(); j++) {
 		  if (receive[j].buf != NULL) {
 			  rio_writen(clientfd, receive[j].buf, receive[j].length);
 		  }
-	  }
+      }*/
 	  cache[request] = receive;
 	  close(serverfd);
   }
