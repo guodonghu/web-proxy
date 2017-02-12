@@ -16,6 +16,7 @@ typedef struct {
 	size_t length;
 } piece;
 
+//key: request line value: reponse in pieces
 unordered_map<string, vector<piece> > cache;
 
 
@@ -24,7 +25,6 @@ int main(int argc, char *argv[])
   int listenfd, connfd, optval, serverPort;
   unsigned int clientlen;
   struct sockaddr_in clientaddr;
-  pthread_t tid;
   
   if (argc < 2) {
     printf("Usage: %s <port>\n", argv[0]);
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
   pthread_mutex_init(&mutex, NULL);
 
   while(1) {
-
+    
     clientlen = sizeof(clientaddr);
 
     /* accept a new connection from a client here */
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     if (connfd < 0) {
     	continue;
     }
-    
+    pthread_t tid;
     /* create a new thread to process the new connection */
     int* fdp = (int*)malloc(2*sizeof(int));
     fdp[0] = connfd;
