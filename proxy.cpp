@@ -5,11 +5,15 @@
 #include <string>
 #include <iostream>
 #include <unordered_map>
+#include <fstream>
 
 using namespace std;
 
 int proxyPort;
 pthread_mutex_t mutex;
+ofstream log_fs;
+#define LOG "/var/log/erss-proxy.log"
+
 
 typedef struct {
 	char buf[BUFFER_SIZE];
@@ -18,9 +22,51 @@ typedef struct {
 
 unordered_map<string, vector<piece> > cache;
 
+void signal_handler(int signal) {
+  return;
+}
 
-int main(int argc, char *argv[])
-{
+int start_daemon() {
+  if (daemon(0, 0) == -1) {
+    return -1;
+  }
+  //clear umask
+  umask(0);
+  //fork second time not to be the session leader
+  pid_t pid = 0;
+  pid = fork();
+  if (pid < 0) {
+    exit(EXIT_FAILURE);
+  }
+  if (pid > 0) {
+    exit(EXIT_SUCCESS);
+  }
+  
+  //ignore signals
+  signal(SIGPIPE,SIG_IGN);
+  if (signal(SIGHUP, signal_handler) == SIG_ERR) {
+    cerr << "can not handle SIGHUP" << endl;
+    return -1;
+  }
+
+  //open log file
+  log_fs.open(LOG, ofstream::out);
+  if (!log_fs.is_open()) {
+    cerr << "can not open log file" << endl;
+    return -1;
+  }
+
+  log_fs << "dameon id is :" << getpid() << endl;
+  //drop privilege
+  uid_t temp = getuid();
+  seteuid(temp);
+  //successfully set up daemon
+  return 0;
+}
+
+
+
+int main(int argc, char *argv[]) {
   int listenfd, connfd, optval, serverPort;
   unsigned int clientlen;
   struct sockaddr_in clientaddr;
@@ -29,9 +75,13 @@ int main(int argc, char *argv[])
     printf("Usage: %s <port>\n", argv[0]);
     exit(1);
   }
-  
+
+  if (start_daemon() == -1) {
+    perror("can not start deamon:");
+    return EXIT_FAILURE;
+  }
+
   serverPort = 80;
-  signal(SIGPIPE,SIG_IGN);
   proxyPort = atoi(argv[1]);
 
   // start listening on proxy port
@@ -41,12 +91,8 @@ int main(int argc, char *argv[])
   optval = 1;
   setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void*)&optval, sizeof(int)); 
   
-  pthread_mutex_init(&mutex, NULL);
-
   while(1) {
-
     clientlen = sizeof(clientaddr);
-
     // accept a new connection from a client here
     connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
     if (connfd < 0) {
@@ -61,7 +107,6 @@ int main(int argc, char *argv[])
     pthread_detach(tid);
 
   }
-  pthread_mutex_destroy(&mutex);
   close(listenfd);
   return 0;
 }

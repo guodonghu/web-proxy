@@ -1,0 +1,14 @@
+Team Member:
+Guodong Hu(gh84)
+Guotao Dong(gd50)
+
+Build program by ./bulid
+Run program as sudo ./proxy <port>
+
+Configure Firefox by following steps:
+1. Preference
+2. Advance
+3. Network
+4. Connection Settings
+5. Manual proxy Configuration
+6. Type in the proxy IP Address and port
