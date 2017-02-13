@@ -172,6 +172,7 @@ void parseAddress(char* url, char* host, char** file, int* serverPort) {
 }
 
 void httpConnection(int clientfd, int serverPort, char *client_addr) {
+  int id = getUID();
   char *cmd, *file;
   std::string request;
   std::vector<piece> response;
@@ -225,26 +226,31 @@ void httpConnection(int clientfd, int serverPort, char *client_addr) {
     
     string now = getTime();
     string temp(header);
-    int id = getUID();
     string requestMessage = to_string(id) + ": " + temp + " from " + string(client_addr) + " @ " + now;
     requestMessage.erase(requestMessage.find_first_of('\r'), 2);
+    requestMessage.erase(requestMessage.find_last_of('\n'), 1);
     write_log(requestMessage);
     
-	  bool responsed = false;
-    if (cache.find(request) != cache.end()) {
-      for (auto i : cache[request].response) {
+	
+    if (cache.find(string(header)) != cache.end()) {
+      string message = to_string(id) + ": ";
+      message += "in cache";
+      write_log(message);
+      for (auto i : cache[string(header)].response) {
         if (i.buf != NULL) {
           rio_writen(clientfd, i.buf, i.length);
-          responsed = true;
         }
-      }
-      if (responsed == true) {
-        printf("Cache responsed!\n");
       }
       close(clientfd);
       return;
     }
 
+    if (string(header).find("GET") != string::npos) {
+      string message = to_string(id) + ": ";
+      message += "not in cache";
+      write_log(message);
+    }
+    
 	  int tries = 10;
 	  while (tries) {
 		  if ((serverfd = open_clientfd(host, serverPort)) > 0) {
@@ -264,6 +270,7 @@ void httpConnection(int clientfd, int serverPort, char *client_addr) {
 	  rio_readinitb(&server, serverfd);
 	  while(1) {
 		  piece temp;
+      memset(temp.buf, 0, BUFFER_SIZE);
 		  length = rio_readn(serverfd, temp.buf, BUFFER_SIZE);
 		  if (length > 0) {
 			  temp.length = length;
@@ -273,12 +280,11 @@ void httpConnection(int clientfd, int serverPort, char *client_addr) {
 		  else{
         break;
       }
-		  memset(buf3,0,BUFFER_SIZE);
 	  }
-    if (strcmp(cmd, "GET") == 0) {
+    if (string(header).find("GET") != string::npos) {
       HTTP newRequest;
       newRequest.response = response;
-      cache[request] = newRequest;
+      cache[string(header)] = newRequest;
     }
 	  close(serverfd);
   }
