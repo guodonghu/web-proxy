@@ -12,3 +12,6 @@ Configure Firefox by following steps:
 4. Connection Settings
 5. Manual proxy Configuration
 6. Type in the proxy IP Address and port
+
+Note:
+This program has not implemented the HTTP caching rules and all it does is a simple caching for HTTP GET

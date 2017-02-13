@@ -83,7 +83,7 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, ssize_t maxlen) {
   ssize_t n, rc;
   char c, *bufp = (char*)usrbuf;
   n = 0;
-  while (n < maxlen-1){
+  while (n < maxlen - 1){
     if ((rc = rio_read(rp, &c, 1)) == 1) {
       n++;
       *bufp++ = c;
@@ -98,10 +98,11 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, ssize_t maxlen) {
       return -1;
     }
   }
-  //*bufp = 0;
+  *bufp = 0;
   return n;
 }
 
+//read once
 ssize_t rio_readp(int fd, void *ptr, ssize_t nbytes) {
   int n;
   while(1){

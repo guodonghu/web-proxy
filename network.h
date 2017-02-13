@@ -38,8 +38,8 @@ typedef struct {
 #define LISTENQ  1024  //max length for listen socket queue
 
 //network connection functions
-void *forwarder(void* args);
-void *httpConnection(void* args);
+void forwarder(int clientfd, int serverfd);
+void httpConnection(int clientfd, int serverPort, char *client_addr);
 void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort);
 
 //io fuctions

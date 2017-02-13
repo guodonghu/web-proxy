@@ -1,16 +1,21 @@
 #include <stdio.h>
 #include "network.h"
-#include <pthread.h>
+#include <thread>
 #include <vector>
 #include <string>
 #include <iostream>
 #include <unordered_map>
 #include <fstream>
+#include <mutex>
+#include <chrono>
+#include <ctime>
 
 using namespace std;
 
+int UID = 0;
 int proxyPort;
-pthread_mutex_t mutex;
+mutex log_mtx;
+mutex uid_mtx;
 ofstream log_fs;
 #define LOG "/var/log/erss-proxy.log"
 
@@ -20,13 +25,56 @@ typedef struct {
 	size_t length;
 } piece;
 
-unordered_map<string, vector<piece> > cache;
+class HTTP {
+public:
+  //key: Expires, Date, max-age, Etag
+  unordered_map<string, string> cache_info;
+  vector<piece> response;
+};
+
+
+unordered_map<string, HTTP> cache;
 
 void signal_handler(int signal) {
   return;
 }
 
+string getTime() {
+  chrono::time_point<chrono::system_clock> now;
+  now = std::chrono::system_clock::now();
+  time_t now_time = chrono::system_clock::to_time_t(now);
+  return ctime(&now_time);
+}
+
+int getUID() {
+  int temp;
+  uid_mtx.lock();
+  ++UID;
+  temp = UID;
+  uid_mtx.unlock();
+  return temp;
+}
+
+
 int start_daemon() {
+  //ignore signals
+  signal(SIGPIPE,SIG_IGN);
+  if (signal(SIGHUP, signal_handler) == SIG_ERR) {
+    cerr << "can not handle SIGHUP" << endl;
+    return -1;
+  }
+  
+  //open log file
+  log_fs.open(LOG, ofstream::out);
+  if (!log_fs.is_open()) {
+    cerr << "can not open log file" << endl;
+    return -1;
+  }
+  //drop privilege
+  uid_t temp = getuid();
+  seteuid(temp);
+
+  
   if (daemon(0, 0) == -1) {
     return -1;
   }
@@ -41,27 +89,15 @@ int start_daemon() {
   if (pid > 0) {
     exit(EXIT_SUCCESS);
   }
-  
-  //ignore signals
-  signal(SIGPIPE,SIG_IGN);
-  if (signal(SIGHUP, signal_handler) == SIG_ERR) {
-    cerr << "can not handle SIGHUP" << endl;
-    return -1;
-  }
-
-  //open log file
-  log_fs.open(LOG, ofstream::out);
-  if (!log_fs.is_open()) {
-    cerr << "can not open log file" << endl;
-    return -1;
-  }
-
   log_fs << "dameon id is :" << getpid() << endl;
-  //drop privilege
-  uid_t temp = getuid();
-  seteuid(temp);
   //successfully set up daemon
   return 0;
+}
+
+void write_log(string message) {
+  log_mtx.lock();
+  log_fs << message << endl;
+  log_mtx.unlock();
 }
 
 
@@ -98,15 +134,15 @@ int main(int argc, char *argv[]) {
     if (connfd < 0) {
     	continue;
     }
-    pthread_t tid;
-    // create a new thread to process the new connection 
-    int* fdp = (int*)malloc(2*sizeof(int));
-    fdp[0] = connfd;
-    fdp[1] = serverPort;
-    pthread_create(&tid, NULL, httpConnection, fdp);
-    pthread_detach(tid);
 
+    char client_ip[100];
+    strcpy(client_ip,inet_ntoa(clientaddr.sin_addr));
+    
+    // create a new thread to process the new connection 
+    thread t(httpConnection, connfd, serverPort, client_ip);
+    t.detach();
   }
+  
   close(listenfd);
   return 0;
 }
@@ -135,19 +171,19 @@ void parseAddress(char* url, char* host, char** file, int* serverPort) {
 	*serverPort = atoi(strtok_r(NULL, "/",&saveptr));
 }
 
-void *httpConnection(void* args) {
+void httpConnection(int clientfd, int serverPort, char *client_addr) {
   char *cmd, *file;
   std::string request;
-  std::vector<piece> receive;
+  std::vector<piece> response;
   rio_t server, client;
-  int serverfd, clientfd, serverPort;
+  int serverfd;
   char buf1[BUFFER_SIZE], buf2[BUFFER_SIZE], buf3[BUFFER_SIZE];
   char host[BUFFER_SIZE];
   char url[BUFFER_SIZE];
   
-  clientfd = ((int*)args)[0];
-  serverPort = ((int*)args)[1];
-  free(args);
+  // clientfd = ((int*)args)[0];
+  //serverPort = ((int*)args)[1];
+  //free(args);
   memset(buf1, 0, BUFFER_SIZE);
   memset(buf2, 0, BUFFER_SIZE);
   memset(buf3, 0, BUFFER_SIZE);
@@ -155,6 +191,7 @@ void *httpConnection(void* args) {
   rio_readinitb(&client, clientfd);
   rio_readlineb(&client, buf1, BUFFER_SIZE);
   char header[BUFFER_SIZE];
+  memset(header, 0, BUFFER_SIZE);
   strcpy(header, buf1);
   sscanf(buf1, "%s %s %s", buf2, url, buf3);
   cmd = buf2;
@@ -186,9 +223,16 @@ void *httpConnection(void* args) {
 		  memset(buf2,0,strlen(buf2));
 	  }
     
+    string now = getTime();
+    string temp(header);
+    int id = getUID();
+    string requestMessage = to_string(id) + ": " + temp + " from " + string(client_addr) + " @ " + now;
+    requestMessage.erase(requestMessage.find_first_of('\r'), 2);
+    write_log(requestMessage);
+    
 	  bool responsed = false;
     if (cache.find(request) != cache.end()) {
-      for (auto i : cache[request]) {
+      for (auto i : cache[request].response) {
         if (i.buf != NULL) {
           rio_writen(clientfd, i.buf, i.length);
           responsed = true;
@@ -198,7 +242,7 @@ void *httpConnection(void* args) {
         printf("Cache responsed!\n");
       }
       close(clientfd);
-      return NULL;
+      return;
     }
 
 	  int tries = 10;
@@ -211,7 +255,7 @@ void *httpConnection(void* args) {
 	  if (serverfd <= 0) {
 		  //printf("failed to establish connection.\n");
 		  close(clientfd);
-		  return NULL;
+		  return;
 	  }
 	  if (request.size() != 0) {
 		  rio_writen(serverfd, request.c_str(), request.size());
@@ -223,7 +267,7 @@ void *httpConnection(void* args) {
 		  length = rio_readn(serverfd, temp.buf, BUFFER_SIZE);
 		  if (length > 0) {
 			  temp.length = length;
-			  receive.push_back(temp);
+        response.push_back(temp);
         rio_writen(clientfd, temp.buf, temp.length);
 		  }
 		  else{
@@ -231,7 +275,11 @@ void *httpConnection(void* args) {
       }
 		  memset(buf3,0,BUFFER_SIZE);
 	  }
-	  cache[request] = receive;
+    if (strcmp(cmd, "GET") == 0) {
+      HTTP newRequest;
+      newRequest.response = response;
+      cache[request] = newRequest;
+    }
 	  close(serverfd);
   }
   // CONNECT: call a different function, securetalk, for HTTPS
@@ -240,7 +288,6 @@ void *httpConnection(void* args) {
   }
   
   close(clientfd);
-  return NULL;
 }
 
 void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort) {
@@ -257,30 +304,18 @@ void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort) {
   rio_writen(clientfd, "HTTP/1.1 200 Connection established\r\n\r\n", strlen("HTTP/1.1 200 Connection established\r\n\r\n"));
   
   // spawn a thread to pass bytes from origin server to client 
-  pthread_t thds[2];
-  int * fd1 = (int *)malloc(2*sizeof(int));
-  fd1[0] = clientfd;
-  fd1[1] = serverfd;
-  pthread_create(&thds[0], NULL, forwarder, fd1);
-
+  thread t1(forwarder, clientfd, serverfd);
+  thread t2(forwarder, serverfd, clientfd);
   // now pass bytes from client to server 
-  int * fd2 = (int *)malloc(2*sizeof(int));
-  fd2[0] = serverfd;
-  fd2[1] = clientfd;
-  pthread_create(&thds[1], NULL, forwarder, fd2);
   //wait two thread to finish, prevent serverfd from being closed too early
-  for (int i = 0; i < 2; i++) {
-    pthread_join(thds[i], NULL);
-  }
+  t1.join();
+  t2.join();
   close(serverfd);
 }
 
-void *forwarder(void* args) {
-  int serverfd, clientfd;
+void forwarder(int clientfd, int serverfd) {
   char buf1[BUFFER_SIZE];
-  clientfd = ((int*)args)[0];
-  serverfd = ((int*)args)[1];
-  free(args);
+  memset(buf1, 0, BUFFER_SIZE);
   
   ssize_t length = 0;
   while(1) {
@@ -292,6 +327,5 @@ void *forwarder(void* args) {
     }
     memset(buf1,0,strlen(buf1));
   }
-  return NULL;
 }
 
