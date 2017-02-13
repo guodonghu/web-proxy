@@ -9,6 +9,7 @@
 #include <mutex>
 #include <chrono>
 #include <ctime>
+#include <sstream>
 
 using namespace std;
 
@@ -264,15 +265,28 @@ void httpConnection(int clientfd, int serverPort, char *client_addr) {
 		  return;
 	  }
 	  if (request.size() != 0) {
+      string message = to_string(id) + ":" + " Requesting " + string(header) + " from " + string(host);;
+      message.erase(message.find_first_of('\r'), 2);
+      write_log(message);
 		  rio_writen(serverfd, request.c_str(), request.size());
 	  }
 	  //receive the response
 	  rio_readinitb(&server, serverfd);
+    bool flag = false;
 	  while(1) {
 		  piece temp;
       memset(temp.buf, 0, BUFFER_SIZE);
 		  length = rio_readn(serverfd, temp.buf, BUFFER_SIZE);
 		  if (length > 0) {
+        if (flag == false) {
+          flag = true;
+          string message = to_string(id) + ":" + " Received ";
+          stringstream ss(temp.buf);
+          string receive;
+          getline(ss, receive, '\r');
+          message += receive + " from " + string(host);
+          write_log(message);
+        }
 			  temp.length = length;
         response.push_back(temp);
         rio_writen(clientfd, temp.buf, temp.length);
@@ -281,6 +295,7 @@ void httpConnection(int clientfd, int serverPort, char *client_addr) {
         break;
       }
 	  }
+    
     if (string(header).find("GET") != string::npos) {
       HTTP newRequest;
       newRequest.response = response;
