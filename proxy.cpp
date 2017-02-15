@@ -307,8 +307,9 @@ void httpConnection(int clientfd, int serverPort, char *client_addr) {
   if (strcmp(cmd, "CONNECT") == 0) {
 	  httpsConnection(clientfd, client, host, serverPort);
   }
-  
   close(clientfd);
+  string message = to_string(id) + ":" + " Tunnel closed ";
+  write_log(message);
 }
 
 void httpsConnection(int clientfd, rio_t client, char *inHost, int serverPort) {
