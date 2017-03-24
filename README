@@ -14,4 +14,8 @@ Configure Firefox by following steps:
 6. Type in the proxy IP Address and port
 
 Note:
-This program has not implemented the HTTP caching rules and all it does is a simple caching for HTTP GET
+This program has not implemented the HTTP caching rules and all it does for caching is a simple caching for HTTP GET
+Key feature:
+The program is run as a daemon and it has its own log under /var/log/erss-proxy.log
+Suppport HTTP GET, POST and HTTPS 
+Cache for HTTP GET request
